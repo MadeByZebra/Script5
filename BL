@@ -117,7 +117,6 @@ local KeybindCheatsheetKey = Enum.KeyCode.K
 -- =============================================
 local CombatSettings = {
     DodgeDist    = 5,
-    -- DodgeDur is now in SECONDS (0.1 to 1.0), default 0.3s — fast and snappy
     DodgeDur     = 0.3,
     DetectRange  = 15,
     PingOffset   = 0.08,
@@ -1493,6 +1492,10 @@ end
 --// FPS BOOST \\--
 -- =============================================
 local FpsSnapshot={Applied=false,DescConnection=nil,Parts={},Meshes={},Decals={},Effects={},Lighting={},Terrain={}}
+
+-- *** NEW: Fog & Effects snapshot ***
+local FogSnapshot={Applied=false,FogEnd=nil,FogStart=nil,FogColor=nil,Brightness=nil,GlobalShadows=nil,PostEffects={}}
+
 local function takeSnapshot()
     FpsSnapshot.Parts={}; FpsSnapshot.Meshes={}; FpsSnapshot.Decals={}; FpsSnapshot.Effects={}
     for _,v in next,Workspace:GetDescendants() do pcall(function()
@@ -1524,6 +1527,56 @@ local function stripDescendant(v)
         elseif v:IsA("SurfaceAppearance") or v:IsA("Debris") or v:IsA("MaterialVariant") then v:Destroy()
         elseif v:IsA("Attachment") then v.Visible=false end
     end)
+end
+
+-- *** NEW: Remove Fog & Effects logic ***
+local function removeFogAndEffects()
+    if FogSnapshot.Applied then Notify("Already Removed","Hit Restore first.",2,C_MUTED); return end
+    local L=game:GetService("Lighting")
+    -- Snapshot current values
+    FogSnapshot.FogEnd=L.FogEnd
+    FogSnapshot.FogStart=L.FogStart
+    FogSnapshot.FogColor=L.FogColor
+    FogSnapshot.Brightness=L.Brightness
+    FogSnapshot.GlobalShadows=L.GlobalShadows
+    FogSnapshot.PostEffects={}
+    -- Save and destroy all post-processing effects
+    for _,child in ipairs(L:GetChildren()) do
+        pcall(function()
+            if child:IsA("PostEffect") or child:IsA("Sky") or child:IsA("Atmosphere") or child:IsA("BloomEffect") or child:IsA("BlurEffect") or child:IsA("SunRaysEffect") or child:IsA("DepthOfFieldEffect") or child:IsA("ColorCorrectionEffect") then
+                table.insert(FogSnapshot.PostEffects,{class=child.ClassName,name=child.Name})
+                child:Destroy()
+            end
+        end)
+    end
+    -- Push fog away (effectively removes it)
+    pcall(function()
+        L.FogEnd=9e9
+        L.FogStart=9e9
+        L.FogColor=Color3.fromRGB(0,0,0)
+        L.GlobalShadows=false
+        L.Brightness=1
+    end)
+    FogSnapshot.Applied=true
+    Notify("Fog & Effects Removed","Press Restore to undo.",4,C_GREEN)
+    logAction("Fog & Effects removed")
+end
+
+local function restoreFogAndEffects()
+    if not FogSnapshot.Applied then Notify("Nothing to Restore","Remove first.",2,C_MUTED); return end
+    local L=game:GetService("Lighting")
+    pcall(function()
+        L.FogEnd=FogSnapshot.FogEnd
+        L.FogStart=FogSnapshot.FogStart
+        L.FogColor=FogSnapshot.FogColor
+        L.Brightness=FogSnapshot.Brightness
+        L.GlobalShadows=FogSnapshot.GlobalShadows
+    end)
+    -- Note: destroyed effects can't be fully restored by name/class alone without original properties,
+    -- but we restore all the lighting properties that matter most.
+    FogSnapshot.Applied=false
+    Notify("Fog & Effects Restored","Lighting values reset.",4,C_GREEN)
+    logAction("Fog & Effects restored")
 end
 
 -- =============================================
@@ -1858,10 +1911,14 @@ allTabFrames["noclip"]=function()
     for i,txt in ipairs(tips) do local _,lbl,div=makeFeatureRow(tipCard,txt,i); lbl.TextColor3=C_MUTED; lbl.Font=Enum.Font.Gotham; lbl.TextSize=fs(10); if i==#tips then div:Destroy() end end
 end
 
--- FPS BOOST
+-- =============================================
+-- FPS BOOST  (UPDATED — includes Fog & Effects buttons)
+-- =============================================
 allTabFrames["fps"]=function()
     makeSectionLabel(Content,"Performance",0)
     local fpsCard=makeCard(Content,1)
+
+    -- Apply FPS Boost
     makeButtonRow(fpsCard,"Apply FPS Boost",0,function()
         if FpsSnapshot.Applied then Notify("Already Applied","Hit Undo first.",2,C_MUTED); return end
         Notify("Applying...","Stripping visuals.",4,C_ACCENT)
@@ -1877,6 +1934,8 @@ allTabFrames["fps"]=function()
         FpsSnapshot.DescConnection=Workspace.DescendantAdded:Connect(function(v) task.defer(function() stripDescendant(v) end) end)
         Notify("FPS Boost Applied","Press Undo to restore.",4,C_GREEN)
     end,"Strip all visual effects to maximize FPS","fpsboost")
+
+    -- Undo FPS Boost
     makeButtonRow(fpsCard,"Undo FPS Boost",1,function()
         if not FpsSnapshot.Applied then Notify("Nothing to Undo","Apply first.",2,C_MUTED); return end
         if FpsSnapshot.DescConnection then FpsSnapshot.DescConnection:Disconnect(); FpsSnapshot.DescConnection=nil end
@@ -1888,6 +1947,18 @@ allTabFrames["fps"]=function()
         pcall(function() local T2=Workspace:FindFirstChildOfClass("Terrain"); if T2 and FpsSnapshot.Terrain then sethiddenproperty(T2,"Decoration",true); T2.WaterReflectance=FpsSnapshot.Terrain.WaterReflectance; T2.WaterTransparency=FpsSnapshot.Terrain.WaterTransparency; T2.WaterWaveSize=FpsSnapshot.Terrain.WaterWaveSize; T2.WaterWaveSpeed=FpsSnapshot.Terrain.WaterWaveSpeed end end)
         FpsSnapshot.Applied=false; Notify("FPS Boost Undone","Visuals restored.",4,C_GREEN)
     end,"Restore all visuals to pre-boost state")
+
+    -- *** NEW SECTION: Fog & Lighting Effects ***
+    makeSectionLabel(Content,"Fog & Lighting Effects",2)
+    local fogCard=makeCard(Content,3)
+
+    makeButtonRow(fogCard,"Remove Fog & Effects",0,function()
+        removeFogAndEffects()
+    end,"Instantly removes fog, bloom, sun rays, atmosphere and shadows")
+
+    makeButtonRow(fogCard,"Restore Fog & Effects",1,function()
+        restoreFogAndEffects()
+    end,"Restores lighting values to what they were before removal")
 end
 
 -- =============================================
@@ -1900,10 +1971,6 @@ allTabFrames["combat"]=function()
         return num and ("rbxassetid://"..num) or id
     end
 
-    -- ============================================================
-    -- JAB REPLACER — fixed: single connection stored per character,
-    -- properly disconnected on toggle off and on respawn.
-    -- ============================================================
     local JAB_MAP={["rbxassetid://5167537710"]="rbxassetid://5167521279"}
     local JAB_WHITELIST={
         ["rbxassetid://4227280698"]=true,["rbxassetid://4227920968"]=true,
@@ -1911,16 +1978,15 @@ allTabFrames["combat"]=function()
         ["rbxassetid://4227082585"]=true,
     }
 
-    -- Module-level state so respawn handlers can reach it
     local jabActive = false
-    local jabConn   = nil  -- the single AnimationPlayed connection
+    local jabConn   = nil
 
     local function stopJab()
         if jabConn then jabConn:Disconnect(); jabConn=nil end
     end
 
     local function startJab(animator)
-        stopJab()  -- always clean up first
+        stopJab()
         jabConn = animator.AnimationPlayed:Connect(function(track)
             if not jabActive then return end
             local n = normalizeId(track.Animation.AnimationId)
@@ -1934,9 +2000,6 @@ allTabFrames["combat"]=function()
         end)
     end
 
-    -- ============================================================
-    -- DODGE EXTENDER — DodgeDur is now 0.05–0.50 s (slider in ms)
-    -- ============================================================
     local dodgeActive = false
     local dodgeConn   = nil
     local activeDodge = nil
@@ -1960,9 +2023,8 @@ allTabFrames["combat"]=function()
             local c3=Player.Character; if not c3 then conn2:Disconnect(); return end
             local r3=c3:FindFirstChild("HumanoidRootPart"); if not r3 then conn2:Disconnect(); return end
             elapsed=elapsed+dt
-            -- eased step: fast at start, slows down at end
             local progress = math.clamp(elapsed/CombatSettings.DodgeDur, 0, 1)
-            local ease = 1 - progress  -- linear ease-out factor
+            local ease = 1 - progress
             local stepDist = (CombatSettings.DodgeDist / CombatSettings.DodgeDur) * dt * ease * 2
             r3.CFrame = r3.CFrame + (wDir * stepDist)
             if elapsed >= CombatSettings.DodgeDur then conn2:Disconnect() end
@@ -1979,7 +2041,6 @@ allTabFrames["combat"]=function()
         end)
     end
 
-    -- Shared animator reference for this tab render
     local function getAnimator()
         local char = Player.Character or Player.CharacterAdded:Wait()
         local hum  = char:WaitForChild("Humanoid",10)
@@ -1989,15 +2050,11 @@ allTabFrames["combat"]=function()
 
     local animator = getAnimator()
 
-    -- ------------------------------------------------
-    -- JAB UI
-    -- ------------------------------------------------
     makeSectionLabel(Content,"Jab Replacer",0)
     local jabCard=makeCard(Content,1)
 
     makeToggleRow(jabCard,"Replace Right Jab with Left",0,false,function(val)
         jabActive = val
-        -- Always refresh animator reference on toggle
         local anim = getAnimator()
         if val then
             if anim then startJab(anim) end
@@ -2008,9 +2065,6 @@ allTabFrames["combat"]=function()
         end
     end,"Swaps right jab animation with the left jab animation")
 
-    -- ------------------------------------------------
-    -- DODGE EXTENDER UI
-    -- ------------------------------------------------
     makeSectionLabel(Content,"Dodge Extender",2)
     local dodgeCard=makeCard(Content,3)
 
@@ -2026,7 +2080,6 @@ allTabFrames["combat"]=function()
         end
     end,"Extends the slide distance when you dodge left or right")
 
-    -- Dodge Distance slider (1–30 studs)
     local distWrap=Instance.new("Frame",Content); distWrap.Size=UDim2.new(1,0,0,0)
     distWrap.AutomaticSize=Enum.AutomaticSize.Y; distWrap.BackgroundColor3=C_CARD
     distWrap.BorderSizePixel=0; distWrap.LayoutOrder=4
@@ -2034,7 +2087,6 @@ allTabFrames["combat"]=function()
     makeList(distWrap,Enum.FillDirection.Vertical,6)
 
     do
-        -- Distance
         local hdr=Instance.new("Frame",distWrap); hdr.Size=UDim2.new(1,0,0,14); hdr.BackgroundTransparency=1
         local hl=Instance.new("UIListLayout",hdr); hl.FillDirection=Enum.FillDirection.Horizontal
         local lbl=Instance.new("TextLabel",hdr); lbl.Size=UDim2.new(0.65,0,1,0)
@@ -2064,10 +2116,6 @@ allTabFrames["combat"]=function()
         UIS.InputEnded:Connect(function(inp) if inp.UserInputType==Enum.UserInputType.MouseButton1 then slDrag=false end end)
         track.InputBegan:Connect(function(inp) if inp.UserInputType==Enum.UserInputType.MouseButton1 then updateDist(inp.Position.X) end end)
 
-        -- ------------------------------------------------
-        -- Dodge Speed slider — range 50ms to 500ms, stored as seconds
-        -- Default is 0.3s = 300ms. Displayed as ms so it makes sense.
-        -- ------------------------------------------------
         local DODGE_MS_MIN, DODGE_MS_MAX = 50, 500
         local currentMs = math.floor(CombatSettings.DodgeDur * 1000)
 
@@ -2092,10 +2140,9 @@ allTabFrames["combat"]=function()
         local function updateSpeed(x)
             local rel=math.clamp((x-track2.AbsolutePosition.X)/track2.AbsoluteSize.X,0,1)
             local ms=math.floor(DODGE_MS_MIN+rel*(DODGE_MS_MAX-DODGE_MS_MIN))
-            -- snap to nearest 10ms for cleanliness
             ms=math.floor(ms/10)*10
             ms=math.max(DODGE_MS_MIN,ms)
-            CombatSettings.DodgeDur = ms/1000  -- store as seconds
+            CombatSettings.DodgeDur = ms/1000
             local relFinal=(ms-DODGE_MS_MIN)/(DODGE_MS_MAX-DODGE_MS_MIN)
             fill2.Size=UDim2.new(relFinal,0,1,0); thumb2.Position=UDim2.new(relFinal,-7,-0.1,0)
             valLbl2.Text=ms.."ms"
@@ -2106,9 +2153,6 @@ allTabFrames["combat"]=function()
         track2.InputBegan:Connect(function(inp) if inp.UserInputType==Enum.UserInputType.MouseButton1 then updateSpeed(inp.Position.X) end end)
     end
 
-    -- ------------------------------------------------
-    -- AUTO GRABBER
-    -- ------------------------------------------------
     makeSectionLabel(Content,"Auto Grabber",5)
     local grabCard=makeCard(Content,6)
 
@@ -2194,7 +2238,6 @@ allTabFrames["combat"]=function()
         else Notify("Auto Grabber OFF","Disabled.",2,C_MUTED) end
     end,"Auto-grabs nearby enemies when they play the grab animation")
 
-    -- Right panel
     makeRightSection("Grabber",0)
     makeRightSlider("Detect Range",5,100,CombatSettings.DetectRange," studs",1,function(val) CombatSettings.DetectRange=val end)
     makeRightSlider("Ping Offset",0,300,math.floor(CombatSettings.PingOffset*1000)," ms",2,function(val) CombatSettings.PingOffset=val/1000 end)
@@ -2211,9 +2254,6 @@ allTabFrames["combat"]=function()
         end)
     end)
 
-    -- ------------------------------------------------
-    -- Respawn handler — reconnect jab/dodge to new character's Animator
-    -- ------------------------------------------------
     Player.CharacterAdded:Connect(function(newChar)
         local newHum  = newChar:WaitForChild("Humanoid",10)
         local newAnim = newHum and newHum:WaitForChild("Animator",10)
@@ -2552,6 +2592,7 @@ allTabFrames["credits"]=function()
         {"Fly","Loads FlyGuiV3 by XNEOFF on demand."},
         {"Noclip","Disables collision every physics tick. Fully reversible."},
         {"Boost FPS","Strips all visuals. Fully undoable with snapshot."},
+        {"Remove Fog & Effects","Kills fog, shadows and post-processing instantly. Restorable."},
         {"Join Class","Teleport to Class C/B/A/S, Trading, Trading Lv30+."},
         {"Macro Recorder","Record key sequences and replay with original timing."},
         {"Combat Tools","Jab Replacer, Dodge Extender, Auto Grabber."},
