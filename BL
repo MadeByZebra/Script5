@@ -8,6 +8,116 @@ local UIS               = game:GetService("UserInputService")
 local RunService        = game:GetService("RunService")
 local TeleportService   = game:GetService("TeleportService")
 local VirtualUser       = game:GetService("VirtualUser")
+
+-- ── InputOptimizer v14fix — Integrated Module ─────────────────────────
+local IO_CFG = {
+    keysEnabled    = true,
+    mouseEnabled   = true,
+    spaceEnabled   = true,
+    keyUpDelay     = 0.018,
+    heldRefire     = 0.07,
+    minGap         = 0.008,
+}
+local IO_PRESETS = {
+    { name="Low Ping",  desc="<80ms",        keyUpDelay=0.016, heldRefire=0.065 },
+    { name="Med-High",  desc="130-150ms",    keyUpDelay=0.038, heldRefire=0.095 },
+    { name="High Ping", desc="200-250ms+",   keyUpDelay=0.070, heldRefire=0.150 },
+}
+local IO_ABILITY_KEYS = {
+    [Enum.KeyCode.C]=true,[Enum.KeyCode.E]=true,[Enum.KeyCode.R]=true,
+    [Enum.KeyCode.Q]=true,[Enum.KeyCode.F]=true,[Enum.KeyCode.X]=true,
+    [Enum.KeyCode.T]=true,
+}
+local IO_MOUSE_BTNS = {
+    [Enum.UserInputType.MouseButton1]=0,
+    [Enum.UserInputType.MouseButton2]=1,
+}
+local IO_KEY_NAMES = {}
+do
+    local prefix = "Enum.KeyCode."
+    for _, kc in ipairs(Enum.KeyCode:GetEnumItems()) do
+        local full = tostring(kc)
+        IO_KEY_NAMES[kc] = full:sub(#prefix + 1)
+    end
+    IO_KEY_NAMES[0] = "MB1"; IO_KEY_NAMES[1] = "MB2"
+end
+local IO_keyHeld     = {}
+local IO_heldThreads = {}
+local IO_lastFired   = {}
+local IO_lastLabel   = "—"
+local IO_sliderApplyFns = {}
+local IO_activePresetIdx = nil
+
+local function IO_getMouseXY()
+    local pos = UIS:GetMouseLocation(); return pos.X, pos.Y
+end
+local function IO_fireKey(key)
+    local now = os.clock()
+    if (now - (IO_lastFired[key] or 0)) < IO_CFG.minGap then return end
+    IO_lastFired[key] = now
+    VIM:SendKeyEvent(true, key, false, game)
+    task.delay(IO_CFG.keyUpDelay, function() VIM:SendKeyEvent(false, key, false, game) end)
+end
+local function IO_fireMouse(idx)
+    local now = os.clock()
+    if (now - (IO_lastFired[idx] or 0)) < IO_CFG.minGap then return end
+    IO_lastFired[idx] = now
+    local x, y = IO_getMouseXY()
+    VIM:SendMouseButtonEvent(x, y, idx, true, game, 0)
+    task.delay(IO_CFG.keyUpDelay, function()
+        local rx, ry = IO_getMouseXY()
+        VIM:SendMouseButtonEvent(rx, ry, idx, false, game, 0)
+    end)
+end
+local function IO_startHeldRefire(key)
+    if IO_heldThreads[key] then return end
+    IO_heldThreads[key] = task.spawn(function()
+        while IO_keyHeld[key] do
+            task.wait(IO_CFG.heldRefire)
+            if IO_keyHeld[key] then IO_fireKey(key) end
+        end
+        IO_heldThreads[key] = nil
+    end)
+end
+local function IO_stopHeldRefire(key)
+    IO_keyHeld[key] = nil
+end
+
+-- InputOptimizer always-on input connections
+UIS.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    local itype = input.UserInputType
+    if itype == Enum.UserInputType.Keyboard then
+        local key = input.KeyCode
+        if key == Enum.KeyCode.Space and IO_CFG.spaceEnabled then
+            IO_lastLabel = "Space"; return
+        end
+        if IO_CFG.keysEnabled and IO_ABILITY_KEYS[key] and not IO_keyHeld[key] then
+            IO_keyHeld[key] = true
+            IO_lastLabel = IO_KEY_NAMES[key] or tostring(key)
+            IO_fireKey(key); IO_startHeldRefire(key)
+        end
+        return
+    end
+    local idx = IO_MOUSE_BTNS[itype]
+    if idx ~= nil and IO_CFG.mouseEnabled then
+        IO_lastLabel = IO_KEY_NAMES[idx]; IO_fireMouse(idx)
+    end
+end)
+UIS.InputEnded:Connect(function(input)
+    if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+    local key = input.KeyCode
+    if key == Enum.KeyCode.Space and IO_CFG.spaceEnabled then
+        VIM:SendKeyEvent(false, Enum.KeyCode.Space, false, game); return
+    end
+    IO_stopHeldRefire(key)
+end)
+Players.LocalPlayer.CharacterAdded:Connect(function()
+    for k in next, IO_keyHeld do IO_stopHeldRefire(k) end
+    IO_keyHeld = {}
+end)
+-- ── End InputOptimizer Module ──────────────────────────────────────────
+
 local CoreGui           = game:GetService("CoreGui")
 local TweenService      = game:GetService("TweenService")
 local HttpService       = game:GetService("HttpService")
@@ -1031,6 +1141,7 @@ registerSideItem(SideScroll,"fly",      "Fly",            "🕊",17)
 registerSideItem(SideScroll,"noclip",   "Noclip",         "👻",18)
 registerSideItem(SideScroll,"fps",      "Boost FPS",      "⚡",19)
 registerSideItem(SideScroll,"combat",   "Combat Tools",   "🗡",20)
+registerSideItem(SideScroll,"inputopt", "Input Optimizer","⌨",20.5)
 registerSideItem(SideScroll,"iy",       "Infin. Yield",   "⚙",21)
 registerSideItem(SideScroll,"classjoin","Join Class",      "🏆",22)
 registerSideItem(SideScroll,"macro",    "Macro Recorder", "⏺",23)
@@ -2780,6 +2891,136 @@ allTabFrames["credits"]=function()
         descL.Font=Enum.Font.Gotham; descL.TextXAlignment=Enum.TextXAlignment.Left; descL.TextWrapped=true
     end
 end
+
+
+allTabFrames["inputopt"]=function()
+    -- ── Header ──
+    makeSectionLabel(Content,"Ability Keys  (C E R Q F X T)",0)
+
+    -- ── Slider helper (inline, reuses main script helpers) ──
+    local function makeIOSliderRow(labelText,order,minV,maxV,initV,fmt,cfgKey)
+        local card=Instance.new("Frame",Content); card.Size=UDim2.new(1,0,0,32)
+        card.BackgroundColor3=C_CARD; card.BorderSizePixel=0; card.LayoutOrder=order
+        makeRound(card,8); makeStroke(card,C_STROKE,1)
+        local lbl=Instance.new("TextLabel",card); lbl.Size=UDim2.new(0,140,1,0)
+        lbl.Position=UDim2.new(0,12,0,0); lbl.BackgroundTransparency=1
+        lbl.Text=labelText..": "..fmt(initV); lbl.TextColor3=C_MUTED
+        lbl.TextSize=fs(10); lbl.Font=Enum.Font.Gotham; lbl.TextXAlignment=Enum.TextXAlignment.Left
+        local track=Instance.new("Frame",card); track.Size=UDim2.new(1,-168,0,6)
+        track.Position=UDim2.new(0,156,0.5,-3); track.BackgroundColor3=C_STROKE
+        track.BorderSizePixel=0; makeRound(track,3)
+        local fill=Instance.new("Frame",track); fill.Size=UDim2.new((initV-minV)/(maxV-minV),0,1,0)
+        fill.BackgroundColor3=C_ACCENT; fill.BorderSizePixel=0; makeRound(fill,3)
+        local knob=Instance.new("TextButton",track); knob.Size=UDim2.new(0,14,0,14)
+        knob.AnchorPoint=Vector2.new(0.5,0.5); knob.Position=UDim2.new((initV-minV)/(maxV-minV),0,0.5,0)
+        knob.BackgroundColor3=Color3.fromRGB(200,220,255); knob.BorderSizePixel=0
+        knob.Text=""; knob.AutoButtonColor=false; makeRound(knob,7)
+        local function applyVal(val)
+            local rel=math.clamp((val-minV)/(maxV-minV),0,1)
+            fill.Size=UDim2.new(rel,0,1,0); knob.Position=UDim2.new(rel,0,0.5,0)
+            lbl.Text=labelText..": "..fmt(val); IO_CFG[cfgKey]=val
+        end
+        IO_sliderApplyFns[cfgKey]=applyVal
+        local dragging=false
+        knob.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then dragging=true end end)
+        UIS.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end end)
+        UIS.InputChanged:Connect(function(i)
+            if dragging and i.UserInputType==Enum.UserInputType.MouseMovement then
+                local tp=track.AbsolutePosition; local ts=track.AbsoluteSize
+                local rel=math.clamp((i.Position.X-tp.X)/ts.X,0,1)
+                local val=minV+rel*(maxV-minV)
+                fill.Size=UDim2.new(rel,0,1,0); knob.Position=UDim2.new(rel,0,0.5,0)
+                lbl.Text=labelText..": "..fmt(val); IO_CFG[cfgKey]=val
+                IO_activePresetIdx=nil
+            end
+        end)
+    end
+
+    makeIOSliderRow("Key-up delay",1,0.005,0.080,IO_CFG.keyUpDelay,
+        function(v) return math.floor(v*1000).."ms" end,"keyUpDelay")
+    makeIOSliderRow("Hold re-fire", 2,0.040,0.500,IO_CFG.heldRefire,
+        function(v) return math.floor(v*1000).."ms" end,"heldRefire")
+
+    -- ── Presets ──
+    makeSectionLabel(Content,"Ping Presets",3)
+    local presetRow=Instance.new("Frame",Content); presetRow.Size=UDim2.new(1,0,0,36)
+    presetRow.BackgroundTransparency=1; presetRow.BorderSizePixel=0; presetRow.LayoutOrder=4
+    local prl=Instance.new("UIListLayout",presetRow)
+    prl.FillDirection=Enum.FillDirection.Horizontal; prl.Padding=UDim.new(0,6)
+    prl.VerticalAlignment=Enum.VerticalAlignment.Center
+
+    local presetBtnRefs={}
+    for i,preset in ipairs(IO_PRESETS) do
+        local btn=Instance.new("TextButton",presetRow); btn.Size=UDim2.new(0,110,1,-4)
+        local isAct=(IO_activePresetIdx==i)
+        btn.BackgroundColor3=isAct and C_ACCENT or C_CARD; btn.BorderSizePixel=0
+        btn.Text=preset.name.."\n"..preset.desc
+        btn.TextSize=fs(10); btn.Font=Enum.Font.GothamBold
+        btn.TextColor3=isAct and Color3.fromRGB(255,255,255) or C_MUTED
+        btn.AutoButtonColor=false; makeRound(btn,7); makeStroke(btn,isAct and C_ACCENT or C_STROKE,1)
+        presetBtnRefs[i]={btn=btn}
+        btn.MouseButton1Click:Connect(function()
+            if IO_sliderApplyFns["keyUpDelay"] then IO_sliderApplyFns["keyUpDelay"](preset.keyUpDelay) end
+            if IO_sliderApplyFns["heldRefire"]  then IO_sliderApplyFns["heldRefire"](preset.heldRefire)  end
+            IO_activePresetIdx=i
+            for j,pb in ipairs(presetBtnRefs) do
+                local active=(j==i)
+                pb.btn.BackgroundColor3=active and C_ACCENT or C_CARD
+                pb.btn.TextColor3=active and Color3.fromRGB(255,255,255) or C_MUTED
+                local st=pb.btn:FindFirstChildOfClass("UIStroke"); if st then st.Color=active and C_ACCENT or C_STROKE end
+            end
+            Notify("Input Preset","Set to "..preset.name.." ("..preset.desc..")",3,C_ACCENT,"system")
+        end)
+    end
+
+    -- ── Toggle switches ──
+    makeSectionLabel(Content,"Toggles",5)
+    local togCard=makeCard(Content,6)
+    makeToggleRow(togCard,"Ability Keys  (C E R Q F X T)",0,IO_CFG.keysEnabled,function(val)
+        IO_CFG.keysEnabled=val; IO_keyHeld={}
+        Notify("Input Opt – Keys",val and "Ability keys ON" or "Ability keys OFF",2,val and C_GREEN or C_MUTED,"system")
+    end,"Enable/disable VIM injection for ability keys")
+    makeToggleRow(togCard,"Mouse  (MB1 jab / MB2 dodge)",1,IO_CFG.mouseEnabled,function(val)
+        IO_CFG.mouseEnabled=val
+        Notify("Input Opt – Mouse",val and "Mouse ON" or "Mouse OFF",2,val and C_GREEN or C_MUTED,"system")
+    end,"Enable/disable VIM injection for mouse buttons")
+    makeToggleRow(togCard,"Spacebar intercept",2,IO_CFG.spaceEnabled,function(val)
+        IO_CFG.spaceEnabled=val
+        Notify("Input Opt – Space",val and "Space ON" or "Space OFF",2,val and C_GREEN or C_MUTED,"system")
+    end,"Intercept spacebar release for instant key-up")
+
+    -- ── Live status (right panel) ──
+    makeRightSection("Live Status",0)
+    local statusCard2=Instance.new("Frame",RightScroll); statusCard2.Size=UDim2.new(1,0,0,28)
+    statusCard2.BackgroundColor3=C_CARD; statusCard2.BorderSizePixel=0; statusCard2.LayoutOrder=1
+    makeRound(statusCard2,6); makeStroke(statusCard2,C_STROKE,1)
+    local lastLbl2=Instance.new("TextLabel",statusCard2); lastLbl2.Size=UDim2.new(1,-10,1,0)
+    lastLbl2.Position=UDim2.new(0,10,0,0); lastLbl2.BackgroundTransparency=1
+    lastLbl2.TextColor3=C_MUTED; lastLbl2.TextSize=fs(10); lastLbl2.Font=Enum.Font.GothamMedium
+    lastLbl2.TextXAlignment=Enum.TextXAlignment.Left; lastLbl2.Text="last: —"
+    RunService.Heartbeat:Connect(function()
+        if lastLbl2 and lastLbl2.Parent then lastLbl2.Text="last: "..IO_lastLabel end
+    end)
+
+    makeRightSection("Settings",5)
+    makeRightSlider("Min Gap",1,20,math.floor(IO_CFG.minGap*1000),"ms",6,function(val)
+        IO_CFG.minGap=val/1000
+    end)
+
+    makeRightSection("Info",10)
+    local infoCard2=makeCard(RightScroll,11)
+    local tips2={
+        "v14fix — tighter space key-up",
+        "Hold re-fire keeps key held",
+        "Min Gap prevents key spam drop",
+        "Presets tune for your ping",
+    }
+    for i,tip in ipairs(tips2) do
+        local _,lbl,div=makeFeatureRow(infoCard2,tip,i); lbl.TextColor3=C_MUTED
+        lbl.Font=Enum.Font.Gotham; lbl.TextSize=fs(10); if i==#tips2 then div:Destroy() end
+    end
+end
+
 
 end
 buildTabs()
