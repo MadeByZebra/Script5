@@ -1,31 +1,44 @@
+-- Fixed version: top-level locals de-localized to avoid executor local-register limit; AutoClash uses UI navigation Return tapping.
 --// Services \\--
-local Workspace         = game:GetService("Workspace")
-local Players           = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local GuiService        = game:GetService("GuiService")
-local VIM               = game:GetService("VirtualInputManager")
-local UIS               = game:GetService("UserInputService")
-local RunService        = game:GetService("RunService")
-local TeleportService   = game:GetService("TeleportService")
-local VirtualUser       = game:GetService("VirtualUser")
-local CoreGui           = game:GetService("CoreGui")
-local TweenService      = game:GetService("TweenService")
-local HttpService       = game:GetService("HttpService")
+Workspace         = game:GetService("Workspace")
+Players           = game:GetService("Players")
+ReplicatedStorage = game:GetService("ReplicatedStorage")
+GuiService        = game:GetService("GuiService")
+VIM               = game:GetService("VirtualInputManager")
+UIS               = game:GetService("UserInputService")
+RunService        = game:GetService("RunService")
+TeleportService   = game:GetService("TeleportService")
+VirtualUser       = game:GetService("VirtualUser")
+CoreGui           = game:GetService("CoreGui")
+TweenService      = game:GetService("TweenService")
+HttpService       = game:GetService("HttpService")
 
 --// Variables \\--
-local Player    = Players.LocalPlayer
-local playerGui = Player:WaitForChild("PlayerGui")
-local Machinery = Workspace:WaitForChild("Machinery")
-local GymUse    = ReplicatedStorage:WaitForChild("Action"):WaitForChild("GymUse")
-local Camera    = Workspace.CurrentCamera
-local SCRIPT_URL = ""
+Player    = Players.LocalPlayer
+playerGui = Player:WaitForChild("PlayerGui")
+Camera    = Workspace.CurrentCamera
+SCRIPT_URL = ""
 
-local function ensureFolder(path)
+Machinery = nil
+GymUse    = nil
+
+task.spawn(function()
+    local ok1, m = pcall(function() return Workspace:WaitForChild("Machinery", 20) end)
+    if ok1 and m then Machinery = m end
+
+    local ok2, a = pcall(function() return ReplicatedStorage:WaitForChild("Action", 20) end)
+    if ok2 and a then
+        local ok3, g = pcall(function() return a:WaitForChild("GymUse", 20) end)
+        if ok3 and g then GymUse = g end
+    end
+end)
+
+function ensureFolder(path)
     pcall(function() if not isfolder(path) then makefolder(path) end end)
 end
 
-local SessionStart = os.clock()
-local function getSessionTime()
+SessionStart = os.clock()
+function getSessionTime()
     local elapsed = math.floor(os.clock() - SessionStart)
     local h = math.floor(elapsed / 3600)
     local m = math.floor((elapsed % 3600) / 60)
@@ -34,7 +47,7 @@ local function getSessionTime()
     else return string.format("%dm %02ds", m, s) end
 end
 
-local Themes = {
+Themes = {
     ["Rebellion Dark"] = { BG=Color3.fromRGB(9,11,16),    Sidebar=Color3.fromRGB(14,17,25),  Panel=Color3.fromRGB(18,22,32),  Card=Color3.fromRGB(22,27,40),  Stroke=Color3.fromRGB(32,38,56),  Accent=Color3.fromRGB(82,130,255),  AccentDk=Color3.fromRGB(55,100,220),  Text=Color3.fromRGB(215,225,245), Muted=Color3.fromRGB(75,90,125),  SidebarAlpha=0,    BgAlpha=0 },
     ["Dark Blue"]      = { BG=Color3.fromRGB(12,14,22),   Sidebar=Color3.fromRGB(18,22,36),  Panel=Color3.fromRGB(22,28,45),  Card=Color3.fromRGB(26,32,52),  Stroke=Color3.fromRGB(40,48,70),  Accent=Color3.fromRGB(59,130,246),  AccentDk=Color3.fromRGB(37,99,235),   Text=Color3.fromRGB(220,230,245), Muted=Color3.fromRGB(90,110,145), SidebarAlpha=0,    BgAlpha=0 },
     ["Midnight"]       = { BG=Color3.fromRGB(8,8,12),     Sidebar=Color3.fromRGB(13,13,20),  Panel=Color3.fromRGB(18,18,28),  Card=Color3.fromRGB(22,22,34),  Stroke=Color3.fromRGB(38,38,56),  Accent=Color3.fromRGB(139,92,246),  AccentDk=Color3.fromRGB(109,40,217),  Text=Color3.fromRGB(230,225,245), Muted=Color3.fromRGB(100,95,130), SidebarAlpha=0,    BgAlpha=0 },
@@ -52,14 +65,14 @@ local Themes = {
     ["Tritanopia"]     = { BG=Color3.fromRGB(10,12,14),   Sidebar=Color3.fromRGB(15,18,20),  Panel=Color3.fromRGB(20,24,26),  Card=Color3.fromRGB(24,28,32),  Stroke=Color3.fromRGB(38,46,52),  Accent=Color3.fromRGB(255,100,160), AccentDk=Color3.fromRGB(220,70,130),  Text=Color3.fromRGB(235,235,240), Muted=Color3.fromRGB(120,130,140),SidebarAlpha=0,    BgAlpha=0 },
 }
 
-local CurrentThemeName = "Rebellion Dark"
-local T = Themes[CurrentThemeName]
-local C_BG, C_SIDEBAR, C_PANEL, C_CARD, C_STROKE, C_ACCENT, C_ACCENT_DK, C_TEXT, C_MUTED
-local C_GREEN  = Color3.fromRGB(34,197,94)
-local C_RED    = Color3.fromRGB(239,68,68)
-local C_YELLOW = Color3.fromRGB(234,179,8)
+CurrentThemeName = "Rebellion Dark"
+T = Themes[CurrentThemeName]
+C_BG, C_SIDEBAR, C_PANEL, C_CARD, C_STROKE, C_ACCENT, C_ACCENT_DK, C_TEXT, C_MUTED = nil, nil, nil, nil, nil, nil, nil, nil, nil
+C_GREEN  = Color3.fromRGB(34,197,94)
+C_RED    = Color3.fromRGB(239,68,68)
+C_YELLOW = Color3.fromRGB(234,179,8)
 
-local function applyTheme(name)
+function applyTheme(name)
     local th = Themes[name]; if not th then return end
     CurrentThemeName=name; T=th
     C_BG=th.BG; C_SIDEBAR=th.Sidebar; C_PANEL=th.Panel; C_CARD=th.Card
@@ -68,7 +81,7 @@ local function applyTheme(name)
 end
 applyTheme(CurrentThemeName)
 
-local UISettings = {
+UISettings = {
     FontScale      = 1.0,
     CompactSidebar = false,
     DimOverlay     = false,
@@ -76,40 +89,37 @@ local UISettings = {
     ConfirmDialogs = true,
 }
 
--- =============================================
--- NOTIFICATION SETTINGS (new)
--- =============================================
-local NotifSettings = {
-    Enabled          = true,   -- master on/off
-    Duration         = 3,      -- default duration in seconds
-    CategorySystem   = true,   -- system / UI messages
-    CategoryAuto     = true,   -- automation (dex, clash, afk, rejoin...)
-    CategoryCombat   = true,   -- combat tools
-    CategoryInfo     = true,   -- info / misc
+NotifSettings = {
+    Enabled          = true,
+    Duration         = 3,
+    CategorySystem   = true,
+    CategoryAuto     = true,
+    CategoryCombat   = true,
+    CategoryInfo     = true,
 }
 
-local ClashSettings = {
+ClashSettings = {
     AutoClash=false, HighlightOnSelect=true, ClashKeybind=Enum.KeyCode.F,
 }
-local CameraSettings = {
+CameraSettings = {
     BrokenCamera=false, FrozenCFrame=nil, RenderConnection=nil,
     LockOnKeybind=Enum.KeyCode.T, CurrentlyFrozen=false, SubjectConnection=nil,
 }
-local AntiAFK      = { Enabled=false }
-local NoclipSettings = { Enabled=false, Connection=nil }
-local AutoRejoin   = { Enabled=false, Delay=5, Method="SameServer", Connection=nil, LoadScript=true }
-local AutoReconnect = { Enabled=false, Delay=4, CoreGuiConnection=nil, NetworkConnection=nil, KickConnection=nil }
-local RayfieldKeybindSettings = { Key=Enum.KeyCode.RightShift }
-local ProfileSettings = { Current="Default", Names={"Default","Farm Mode","PvP Mode","Custom 1","Custom 2"} }
-local PROFILE_FOLDER = "ZebraBoxingLeague/Profiles"
-local FlyEnabled = false
-local dexGrindActive = false
-local dexSelectedBox = "BOX1"
-local BagHighlightEnabled = true
-local BagHighlightInstances = {}
-local KeybindCheatsheetKey = Enum.KeyCode.K
+AntiAFK      = { Enabled=false }
+NoclipSettings = { Enabled=false, Connection=nil }
+AutoRejoin   = { Enabled=false, Delay=5, Method="SameServer", Connection=nil, LoadScript=true }
+AutoReconnect = { Enabled=false, Delay=4, CoreGuiConnection=nil, NetworkConnection=nil, KickConnection=nil }
+RayfieldKeybindSettings = { Key=Enum.KeyCode.RightShift }
+ProfileSettings = { Current="Default", Names={"Default","Farm Mode","PvP Mode","Custom 1","Custom 2"} }
+PROFILE_FOLDER = "ZebraBoxingLeague/Profiles"
+FlyEnabled = false
+dexGrindActive = false
+dexSelectedBox = "BOX1"
+BagHighlightEnabled = true
+BagHighlightInstances = {}
+KeybindCheatsheetKey = Enum.KeyCode.K
 
-local CombatSettings = {
+CombatSettings = {
     DodgeDist    = 5,
     DodgeDur     = 0.3,
     DetectRange  = 15,
@@ -117,9 +127,9 @@ local CombatSettings = {
     GrabKey      = Enum.KeyCode.Q,
 }
 
-local Favorites = {}
-local function isFavorite(key) return Favorites[key]==true end
-local function toggleFavorite(key)
+Favorites = {}
+function isFavorite(key) return Favorites[key]==true end
+function toggleFavorite(key)
     Favorites[key] = not Favorites[key] or nil
     pcall(function()
         ensureFolder("ZebraBoxingLeague")
@@ -133,29 +143,29 @@ pcall(function()
     end
 end)
 
-local RecentActions = {}
-local function logAction(label)
+RecentActions = {}
+function logAction(label)
     table.insert(RecentActions,1,{label=label,timestamp=getSessionTime()})
     if #RecentActions>50 then table.remove(RecentActions) end
 end
 
-local NotifHistory = {}
-local function addToNotifHistory(title,content,color)
+NotifHistory = {}
+function addToNotifHistory(title,content,color)
     table.insert(NotifHistory,1,{title=title,content=content,color=color,timestamp=getSessionTime()})
     if #NotifHistory>50 then table.remove(NotifHistory) end
 end
 
-local MacroRecorder = {
+MacroRecorder = {
     Recording=false, Playing=false,
     Macros={}, CurrentRec=nil,
 }
-local function startMacroRecording(name)
+function startMacroRecording(name)
     if MacroRecorder.Recording then return end
     MacroRecorder.Recording=true
     MacroRecorder.CurrentRec={name=name,actions={},startTime=os.clock()}
     logAction("Macro REC started: "..name)
 end
-local function stopMacroRecording()
+function stopMacroRecording()
     if not MacroRecorder.Recording then return end
     MacroRecorder.Recording=false
     if MacroRecorder.CurrentRec then
@@ -168,7 +178,7 @@ local function stopMacroRecording()
     end
     MacroRecorder.CurrentRec=nil
 end
-local function playMacro(macro)
+function playMacro(macro)
     if MacroRecorder.Playing then return end
     MacroRecorder.Playing=true
     task.spawn(function()
@@ -207,7 +217,7 @@ pcall(function()
     end
 end)
 
-local function saveProfile(name)
+function saveProfile(name)
     pcall(function()
         ensureFolder("ZebraBoxingLeague"); ensureFolder(PROFILE_FOLDER)
         local data={
@@ -218,7 +228,7 @@ local function saveProfile(name)
         writefile(PROFILE_FOLDER.."/"..name..".json", HttpService:JSONEncode(data))
     end)
 end
-local function loadProfile(name)
+function loadProfile(name)
     local ok=false
     pcall(function()
         local path=PROFILE_FOLDER.."/"..name..".json"
@@ -233,7 +243,7 @@ local function loadProfile(name)
     return ok
 end
 
-local function saveWindowState(pos,size)
+function saveWindowState(pos,size)
     pcall(function()
         ensureFolder("ZebraBoxingLeague")
         writefile("ZebraBoxingLeague/window.json",HttpService:JSONEncode({
@@ -241,7 +251,7 @@ local function saveWindowState(pos,size)
         }))
     end)
 end
-local function loadWindowState()
+function loadWindowState()
     local res=nil
     pcall(function()
         if isfile("ZebraBoxingLeague/window.json") then
@@ -251,50 +261,44 @@ local function loadWindowState()
     return res
 end
 
-local function fs(size) return math.max(8,math.floor(size*UISettings.FontScale)) end
+function fs(size) return math.max(8,math.floor(size*UISettings.FontScale)) end
 
-local function makeRound(p,r)
+function makeRound(p,r)
     local c=Instance.new("UICorner",p); c.CornerRadius=UDim.new(0,r or 6); return c
 end
-local function makeStroke(p,col,th)
+function makeStroke(p,col,th)
     local s=Instance.new("UIStroke",p); s.Color=col or C_STROKE; s.Thickness=th or 1; return s
 end
-local function makePadding(p,t,b,l,r)
+function makePadding(p,t,b,l,r)
     local pad=Instance.new("UIPadding",p)
     pad.PaddingTop=UDim.new(0,t or 0); pad.PaddingBottom=UDim.new(0,b or 0)
     pad.PaddingLeft=UDim.new(0,l or 0); pad.PaddingRight=UDim.new(0,r or 0)
     return pad
 end
-local function makeList(p,dir,pad,sort)
+function makeList(p,dir,pad,sort)
     local l=Instance.new("UIListLayout",p)
     l.FillDirection=dir or Enum.FillDirection.Vertical
     l.SortOrder=sort or Enum.SortOrder.LayoutOrder
     l.Padding=UDim.new(0,pad or 0); return l
 end
 
-local NotifGui=Instance.new("ScreenGui")
+NotifGui=Instance.new("ScreenGui")
 NotifGui.Name="BLNotifs"; NotifGui.ResetOnSpawn=false; NotifGui.DisplayOrder=1001
 NotifGui.IgnoreGuiInset=true; NotifGui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
 NotifGui.Parent=playerGui
 
-local NotifStack=Instance.new("Frame",NotifGui)
+NotifStack=Instance.new("Frame",NotifGui)
 NotifStack.Size=UDim2.new(0,280,1,0); NotifStack.Position=UDim2.new(1,-290,0,0)
 NotifStack.BackgroundTransparency=1; NotifStack.BorderSizePixel=0
-local nl=Instance.new("UIListLayout",NotifStack)
+nl=Instance.new("UIListLayout",NotifStack)
 nl.SortOrder=Enum.SortOrder.LayoutOrder; nl.VerticalAlignment=Enum.VerticalAlignment.Bottom
 nl.Padding=UDim.new(0,6)
-local np=Instance.new("UIPadding",NotifStack); np.PaddingBottom=UDim.new(0,14)
+np=Instance.new("UIPadding",NotifStack); np.PaddingBottom=UDim.new(0,14)
 
-local notifCount=0
+notifCount=0
 
--- =============================================
--- NOTIFY — now respects NotifSettings
--- Category: "system" | "auto" | "combat" | "info" | nil (defaults to system)
--- =============================================
-local function Notify(title, content, duration, color, category)
-    -- Master switch
+function Notify(title, content, duration, color, category)
     if not NotifSettings.Enabled then return end
-    -- Category filters
     category = category or "system"
     if category == "system"  and not NotifSettings.CategorySystem  then return end
     if category == "auto"    and not NotifSettings.CategoryAuto    then return end
@@ -327,23 +331,23 @@ local function Notify(title, content, duration, color, category)
     end)
 end
 
-local TooltipGui=Instance.new("ScreenGui")
+TooltipGui=Instance.new("ScreenGui")
 TooltipGui.Name="BLTooltip"; TooltipGui.ResetOnSpawn=false; TooltipGui.DisplayOrder=1003
 TooltipGui.IgnoreGuiInset=true; TooltipGui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
 TooltipGui.Parent=playerGui
 
-local TooltipFrame=Instance.new("Frame",TooltipGui)
+TooltipFrame=Instance.new("Frame",TooltipGui)
 TooltipFrame.Size=UDim2.new(0,180,0,32); TooltipFrame.BackgroundColor3=C_PANEL
 TooltipFrame.BorderSizePixel=0; TooltipFrame.Visible=false; TooltipFrame.ZIndex=10
 makeRound(TooltipFrame,6); makeStroke(TooltipFrame,C_STROKE,1)
-local TooltipLabel=Instance.new("TextLabel",TooltipFrame)
+TooltipLabel=Instance.new("TextLabel",TooltipFrame)
 TooltipLabel.Size=UDim2.new(1,-12,1,0); TooltipLabel.Position=UDim2.new(0,6,0,0)
 TooltipLabel.BackgroundTransparency=1; TooltipLabel.TextColor3=C_TEXT; TooltipLabel.TextSize=fs(10)
 TooltipLabel.Font=Enum.Font.Gotham; TooltipLabel.TextXAlignment=Enum.TextXAlignment.Left
 TooltipLabel.TextWrapped=true
 
-local tooltipThread=nil
-local function showTooltip(text,guiObject)
+tooltipThread=nil
+function showTooltip(text,guiObject)
     if tooltipThread then task.cancel(tooltipThread) end
     tooltipThread=task.delay(0.6,function()
         if not guiObject or not guiObject.Parent then return end
@@ -356,21 +360,21 @@ local function showTooltip(text,guiObject)
         TooltipFrame.Visible=true
     end)
 end
-local function hideTooltip()
+function hideTooltip()
     if tooltipThread then task.cancel(tooltipThread); tooltipThread=nil end
     TooltipFrame.Visible=false
 end
-local function attachTooltip(obj,text)
+function attachTooltip(obj,text)
     obj.MouseEnter:Connect(function() showTooltip(text,obj) end)
     obj.MouseLeave:Connect(function() hideTooltip() end)
 end
 
-local ConfirmGui=Instance.new("ScreenGui")
+ConfirmGui=Instance.new("ScreenGui")
 ConfirmGui.Name="BLConfirm"; ConfirmGui.ResetOnSpawn=false; ConfirmGui.DisplayOrder=1005
 ConfirmGui.IgnoreGuiInset=true; ConfirmGui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
 ConfirmGui.Parent=playerGui
 
-local function showConfirm(title,body,onYes,onNo)
+function showConfirm(title,body,onYes,onNo)
     if not UISettings.ConfirmDialogs then if onYes then onYes() end; return end
     local overlay=Instance.new("Frame",ConfirmGui)
     overlay.Size=UDim2.new(1,0,1,0); overlay.BackgroundColor3=Color3.fromRGB(0,0,0)
@@ -403,19 +407,19 @@ local function showConfirm(title,body,onYes,onNo)
     end)
 end
 
-local DimGui=Instance.new("ScreenGui")
+DimGui=Instance.new("ScreenGui")
 DimGui.Name="BLDim"; DimGui.ResetOnSpawn=false; DimGui.DisplayOrder=999
 DimGui.IgnoreGuiInset=true; DimGui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; DimGui.Parent=playerGui
-local DimFrame=Instance.new("Frame",DimGui)
+DimFrame=Instance.new("Frame",DimGui)
 DimFrame.Size=UDim2.new(1,0,1,0); DimFrame.BackgroundColor3=Color3.fromRGB(0,0,0)
 DimFrame.BackgroundTransparency=1; DimFrame.BorderSizePixel=0; DimFrame.Visible=false
-local function setDimOverlay(enabled)
+function setDimOverlay(enabled)
     UISettings.DimOverlay=enabled; DimFrame.Visible=enabled
     TweenService:Create(DimFrame,TweenInfo.new(0.3),{BackgroundTransparency=enabled and 0.55 or 1}):Play()
 end
 
-local ExternalOverlays={}
-local function createExternalOverlay(title,lines,accentColor)
+ExternalOverlays={}
+function createExternalOverlay(title,lines,accentColor)
     accentColor=accentColor or C_ACCENT
     local gui=Instance.new("ScreenGui"); gui.Name="Overlay_"..title:gsub("%s","")
     gui.ResetOnSpawn=false; gui.DisplayOrder=1002; gui.IgnoreGuiInset=true
@@ -472,7 +476,7 @@ local function createExternalOverlay(title,lines,accentColor)
     table.insert(ExternalOverlays,entry); return entry
 end
 
-local function spawnAntiAFKOverlay()
+function spawnAntiAFKOverlay()
     for _,e in ipairs(ExternalOverlays) do if e.gui and e.gui.Name=="Overlay_AntiAFK" then return end end
     local entry=createExternalOverlay("Anti AFK",{"Status: Idle","Method: VirtualUser","Interval: 15s"},C_GREEN)
     entry.gui.Name="Overlay_AntiAFK"
@@ -482,7 +486,7 @@ local function spawnAntiAFKOverlay()
         entry.labels[1].TextColor3=AntiAFK.Enabled and C_GREEN or C_MUTED
     end)
 end
-local function spawnClashOverlay()
+function spawnClashOverlay()
     for _,e in ipairs(ExternalOverlays) do if e.gui and e.gui.Name=="Overlay_AutoClash" then return end end
     local entry=createExternalOverlay("Auto Clash",{"Status: Idle","Keybind: F","Buttons: —"},C_ACCENT)
     entry.gui.Name="Overlay_AutoClash"
@@ -493,7 +497,7 @@ local function spawnClashOverlay()
         entry.labels[2].Text="Keybind: "..ClashSettings.ClashKeybind.Name
     end)
 end
-local function spawnDexOverlay()
+function spawnDexOverlay()
     for _,e in ipairs(ExternalOverlays) do if e.gui and e.gui.Name=="Overlay_DexFarm" then return end end
     local entry=createExternalOverlay("Dex Farm",{"Status: Idle","Bag: BOX1","Progress: —","Session: 0m 00s"},Color3.fromRGB(52,211,153))
     entry.gui.Name="Overlay_DexFarm"
@@ -505,7 +509,7 @@ local function spawnDexOverlay()
         entry.labels[4].Text="Session: "..getSessionTime()
     end)
 end
-local function spawnRejoinOverlay()
+function spawnRejoinOverlay()
     for _,e in ipairs(ExternalOverlays) do if e.gui and e.gui.Name=="Overlay_Rejoin" then return end end
     local entry=createExternalOverlay("Auto Rejoin",{"Status: Idle","Method: SameServer","Delay: 5s"},C_YELLOW)
     entry.gui.Name="Overlay_Rejoin"
@@ -517,7 +521,7 @@ local function spawnRejoinOverlay()
         entry.labels[3].Text="Delay: "..AutoRejoin.Delay.."s"
     end)
 end
-local function spawnSessionOverlay()
+function spawnSessionOverlay()
     for _,e in ipairs(ExternalOverlays) do if e.gui and e.gui.Name=="Overlay_Session" then return end end
     local entry=createExternalOverlay("Session Timer",{"Time: 0m 00s","Dex: Idle","Clash: Idle","Noclip: Off"},C_ACCENT)
     entry.gui.Name="Overlay_Session"
@@ -530,11 +534,11 @@ local function spawnSessionOverlay()
     end)
 end
 
-local MainGui=Instance.new("ScreenGui")
+MainGui=Instance.new("ScreenGui")
 MainGui.Name="BoxingLeagueUI"; MainGui.ResetOnSpawn=false; MainGui.DisplayOrder=1000
 MainGui.IgnoreGuiInset=true; MainGui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; MainGui.Parent=playerGui
 
-local Root=Instance.new("Frame",MainGui)
+Root=Instance.new("Frame",MainGui)
 Root.Size=UDim2.new(0,740,0,470); Root.Position=UDim2.new(0.5,-370,0.5,-235)
 Root.BackgroundColor3=C_BG; Root.BorderSizePixel=0; Root.Active=true
 makeRound(Root,10); makeStroke(Root,C_STROKE,1.2)
@@ -547,8 +551,8 @@ do
     end
 end
 
-local MIN_W,MIN_H,MAX_W,MAX_H=560,360,1100,700
-local function addResizeHandle(parent,edge)
+MIN_W,MIN_H,MAX_W,MAX_H=560,360,1100,700
+function addResizeHandle(parent,edge)
     local handle=Instance.new("TextButton",parent); handle.BackgroundTransparency=1
     handle.Text=""; handle.ZIndex=20; handle.BorderSizePixel=0
     local resizing=false; local startPos,startSize
@@ -596,60 +600,60 @@ local function addResizeHandle(parent,edge)
 end
 addResizeHandle(Root,"right"); addResizeHandle(Root,"bottom"); addResizeHandle(Root,"corner")
 
-local Topbar=Instance.new("Frame",Root)
+Topbar=Instance.new("Frame",Root)
 Topbar.Size=UDim2.new(1,0,0,40); Topbar.BackgroundColor3=C_SIDEBAR; Topbar.BorderSizePixel=0
 makeRound(Topbar,10)
-local TFill=Instance.new("Frame",Topbar); TFill.Size=UDim2.new(1,0,0.5,0)
+TFill=Instance.new("Frame",Topbar); TFill.Size=UDim2.new(1,0,0.5,0)
 TFill.Position=UDim2.new(0,0,0.5,0); TFill.BackgroundColor3=C_SIDEBAR; TFill.BorderSizePixel=0
-local TDiv=Instance.new("Frame",Topbar); TDiv.Size=UDim2.new(1,0,0,1)
+TDiv=Instance.new("Frame",Topbar); TDiv.Size=UDim2.new(1,0,0,1)
 TDiv.Position=UDim2.new(0,0,1,-1); TDiv.BackgroundColor3=C_STROKE; TDiv.BorderSizePixel=0
 
-local LogoLabel=Instance.new("TextLabel",Topbar); LogoLabel.Size=UDim2.new(0,130,0,20)
+LogoLabel=Instance.new("TextLabel",Topbar); LogoLabel.Size=UDim2.new(0,130,0,20)
 LogoLabel.Position=UDim2.new(0,14,0,5); LogoLabel.BackgroundTransparency=1
 LogoLabel.Text="BOXING LEAGUE"; LogoLabel.TextColor3=C_TEXT; LogoLabel.TextSize=fs(12)
 LogoLabel.Font=Enum.Font.GothamBlack; LogoLabel.TextXAlignment=Enum.TextXAlignment.Left
-local ByLabel=Instance.new("TextLabel",Topbar); ByLabel.Size=UDim2.new(0,80,0,14)
+ByLabel=Instance.new("TextLabel",Topbar); ByLabel.Size=UDim2.new(0,80,0,14)
 ByLabel.Position=UDim2.new(0,14,0,23); ByLabel.BackgroundTransparency=1; ByLabel.Text="by Zebra"
 ByLabel.TextColor3=C_ACCENT; ByLabel.TextSize=fs(9); ByLabel.Font=Enum.Font.GothamMedium
 ByLabel.TextXAlignment=Enum.TextXAlignment.Left
 
-local SearchFrame=Instance.new("Frame",Topbar); SearchFrame.Size=UDim2.new(0,160,0,24)
+SearchFrame=Instance.new("Frame",Topbar); SearchFrame.Size=UDim2.new(0,160,0,24)
 SearchFrame.Position=UDim2.new(0.5,-80,0.5,-12); SearchFrame.BackgroundColor3=C_CARD; SearchFrame.BorderSizePixel=0
 makeRound(SearchFrame,5); makeStroke(SearchFrame,C_STROKE,1)
-local SearchIcon=Instance.new("TextLabel",SearchFrame); SearchIcon.Size=UDim2.new(0,20,1,0)
+SearchIcon=Instance.new("TextLabel",SearchFrame); SearchIcon.Size=UDim2.new(0,20,1,0)
 SearchIcon.BackgroundTransparency=1; SearchIcon.Text="🔍"; SearchIcon.TextSize=10
 SearchIcon.TextColor3=C_MUTED; SearchIcon.Font=Enum.Font.Gotham
-local SearchBox=Instance.new("TextBox",SearchFrame); SearchBox.Size=UDim2.new(1,-22,1,0)
+SearchBox=Instance.new("TextBox",SearchFrame); SearchBox.Size=UDim2.new(1,-22,1,0)
 SearchBox.Position=UDim2.new(0,20,0,0); SearchBox.BackgroundTransparency=1
 SearchBox.Text=""; SearchBox.PlaceholderText="Search..."; SearchBox.PlaceholderColor3=C_MUTED
 SearchBox.TextColor3=C_TEXT; SearchBox.TextSize=fs(11); SearchBox.Font=Enum.Font.Gotham
 SearchBox.ClearTextOnFocus=false; SearchBox.TextXAlignment=Enum.TextXAlignment.Left
 
-local CloseBtn=Instance.new("TextButton",Topbar); CloseBtn.Size=UDim2.new(0,18,0,18)
+CloseBtn=Instance.new("TextButton",Topbar); CloseBtn.Size=UDim2.new(0,18,0,18)
 CloseBtn.Position=UDim2.new(1,-26,0.5,-9); CloseBtn.BackgroundColor3=Color3.fromRGB(239,68,68)
 CloseBtn.Text="✕"; CloseBtn.TextColor3=Color3.fromRGB(255,255,255); CloseBtn.TextSize=9
 CloseBtn.Font=Enum.Font.GothamBold; CloseBtn.BorderSizePixel=0; makeRound(CloseBtn,9)
-local MinBtn=Instance.new("TextButton",Topbar); MinBtn.Size=UDim2.new(0,18,0,18)
+MinBtn=Instance.new("TextButton",Topbar); MinBtn.Size=UDim2.new(0,18,0,18)
 MinBtn.Position=UDim2.new(1,-50,0.5,-9); MinBtn.BackgroundColor3=Color3.fromRGB(234,179,8)
 MinBtn.Text="−"; MinBtn.TextColor3=Color3.fromRGB(100,70,0); MinBtn.TextSize=12
 MinBtn.Font=Enum.Font.GothamBold; MinBtn.BorderSizePixel=0; makeRound(MinBtn,9)
-local MiniBtn=Instance.new("TextButton",Topbar); MiniBtn.Size=UDim2.new(0,18,0,18)
+MiniBtn=Instance.new("TextButton",Topbar); MiniBtn.Size=UDim2.new(0,18,0,18)
 MiniBtn.Position=UDim2.new(1,-74,0.5,-9); MiniBtn.BackgroundColor3=Color3.fromRGB(52,211,153)
 MiniBtn.Text="◉"; MiniBtn.TextColor3=Color3.fromRGB(0,60,30); MiniBtn.TextSize=10
 MiniBtn.Font=Enum.Font.GothamBold; MiniBtn.BorderSizePixel=0; makeRound(MiniBtn,9)
 
-local Body=Instance.new("Frame",Root)
+Body=Instance.new("Frame",Root)
 Body.Size=UDim2.new(1,0,1,-40); Body.Position=UDim2.new(0,0,0,40)
 Body.BackgroundTransparency=1; Body.BorderSizePixel=0
 
-local SIDEBAR_W=160
-local Sidebar=Instance.new("Frame",Body)
+SIDEBAR_W=160
+Sidebar=Instance.new("Frame",Body)
 Sidebar.Size=UDim2.new(0,SIDEBAR_W,1,0); Sidebar.BackgroundColor3=C_SIDEBAR
 Sidebar.BackgroundTransparency=T.SidebarAlpha; Sidebar.BorderSizePixel=0; makeRound(Sidebar,10)
-local SidebarFill=Instance.new("Frame",Sidebar); SidebarFill.Size=UDim2.new(0,10,1,0)
+SidebarFill=Instance.new("Frame",Sidebar); SidebarFill.Size=UDim2.new(0,10,1,0)
 SidebarFill.Position=UDim2.new(1,-10,0,0); SidebarFill.BackgroundColor3=C_SIDEBAR
 SidebarFill.BackgroundTransparency=T.SidebarAlpha; SidebarFill.BorderSizePixel=0
-local SideDiv=Instance.new("Frame",Sidebar); SideDiv.Size=UDim2.new(0,1,1,0)
+SideDiv=Instance.new("Frame",Sidebar); SideDiv.Size=UDim2.new(0,1,1,0)
 SideDiv.Position=UDim2.new(1,-1,0,0); SideDiv.BackgroundColor3=C_STROKE; SideDiv.BorderSizePixel=0
 
 do
@@ -672,34 +676,34 @@ do
     end)
 end
 
-local SideScroll=Instance.new("ScrollingFrame",Sidebar)
+SideScroll=Instance.new("ScrollingFrame",Sidebar)
 SideScroll.Size=UDim2.new(1,0,1,0); SideScroll.BackgroundTransparency=1
 SideScroll.BorderSizePixel=0; SideScroll.ScrollBarThickness=0
 SideScroll.CanvasSize=UDim2.new(0,0,0,0); SideScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y
-local SideLayout=Instance.new("UIListLayout",SideScroll)
+SideLayout=Instance.new("UIListLayout",SideScroll)
 SideLayout.SortOrder=Enum.SortOrder.LayoutOrder; SideLayout.Padding=UDim.new(0,0)
 makePadding(SideScroll,10,10,0,0)
 
-local Content=Instance.new("ScrollingFrame",Body)
+Content=Instance.new("ScrollingFrame",Body)
 Content.BackgroundTransparency=1; Content.BorderSizePixel=0
 Content.ScrollBarThickness=3; Content.ScrollBarImageColor3=C_STROKE
 Content.CanvasSize=UDim2.new(0,0,0,0); Content.AutomaticCanvasSize=Enum.AutomaticSize.Y
-local ContentLayout=Instance.new("UIListLayout",Content)
+ContentLayout=Instance.new("UIListLayout",Content)
 ContentLayout.SortOrder=Enum.SortOrder.LayoutOrder; ContentLayout.Padding=UDim.new(0,6)
 makePadding(Content,14,14,14,14)
 
-local RightPanel=Instance.new("Frame",Body)
+RightPanel=Instance.new("Frame",Body)
 RightPanel.BackgroundColor3=C_SIDEBAR; RightPanel.BackgroundTransparency=T.SidebarAlpha
 RightPanel.BorderSizePixel=0; makeRound(RightPanel,10)
-local RightFill=Instance.new("Frame",RightPanel); RightFill.Size=UDim2.new(0,10,1,0)
+RightFill=Instance.new("Frame",RightPanel); RightFill.Size=UDim2.new(0,10,1,0)
 RightFill.BackgroundColor3=C_SIDEBAR; RightFill.BackgroundTransparency=T.SidebarAlpha; RightFill.BorderSizePixel=0
-local RightDiv=Instance.new("Frame",RightPanel); RightDiv.Size=UDim2.new(0,1,1,0)
+RightDiv=Instance.new("Frame",RightPanel); RightDiv.Size=UDim2.new(0,1,1,0)
 RightDiv.BackgroundColor3=C_STROKE; RightDiv.BorderSizePixel=0
-local RightScroll=Instance.new("ScrollingFrame",RightPanel)
+RightScroll=Instance.new("ScrollingFrame",RightPanel)
 RightScroll.Size=UDim2.new(1,0,1,0); RightScroll.BackgroundTransparency=1
 RightScroll.BorderSizePixel=0; RightScroll.ScrollBarThickness=0
 RightScroll.CanvasSize=UDim2.new(0,0,0,0); RightScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y
-local RightLayout=Instance.new("UIListLayout",RightScroll)
+RightLayout=Instance.new("UIListLayout",RightScroll)
 RightLayout.SortOrder=Enum.SortOrder.LayoutOrder; RightLayout.Padding=UDim.new(0,5)
 makePadding(RightScroll,10,10,10,10)
 
@@ -712,14 +716,14 @@ RunService.Heartbeat:Connect(function()
     RightPanel.Position=UDim2.new(1,-rightW,0,0)
 end)
 
-local function makeSectionLabel(parent,text,order)
+function makeSectionLabel(parent,text,order)
     local lbl=Instance.new("TextLabel",parent); lbl.Size=UDim2.new(1,0,0,18)
     lbl.BackgroundTransparency=1; lbl.Text=text:upper(); lbl.TextColor3=C_MUTED
     lbl.TextSize=fs(9); lbl.Font=Enum.Font.GothamBold; lbl.TextXAlignment=Enum.TextXAlignment.Left
     lbl.LayoutOrder=order or 0; return lbl
 end
 
-local function makeCard(parent,order)
+function makeCard(parent,order)
     local card=Instance.new("Frame",parent); card.Size=UDim2.new(1,0,0,0)
     card.AutomaticSize=Enum.AutomaticSize.Y; card.BackgroundColor3=C_CARD
     card.BorderSizePixel=0; card.LayoutOrder=order or 0
@@ -727,7 +731,7 @@ local function makeCard(parent,order)
     return card
 end
 
-local function makeFeatureRow(card,labelText,order)
+function makeFeatureRow(card,labelText,order)
     local row=Instance.new("Frame",card); row.Size=UDim2.new(1,0,0,34)
     row.BackgroundTransparency=1; row.BorderSizePixel=0; row.LayoutOrder=order or 0
     local div=Instance.new("Frame",row); div.Size=UDim2.new(1,-24,0,1)
@@ -740,7 +744,7 @@ local function makeFeatureRow(card,labelText,order)
     return row,lbl,div
 end
 
-local function makeToggleRow(card,labelText,order,defaultOn,callback,tooltipText,featureKey)
+function makeToggleRow(card,labelText,order,defaultOn,callback,tooltipText,featureKey)
     local row,lbl,div=makeFeatureRow(card,labelText,order)
     if featureKey then
         local starBtn=Instance.new("TextButton",row); starBtn.Size=UDim2.new(0,16,0,16)
@@ -782,7 +786,7 @@ local function makeToggleRow(card,labelText,order,defaultOn,callback,tooltipText
     return row,set
 end
 
-local function makePill(parent,text,on)
+function makePill(parent,text,on)
     local pill=Instance.new("TextLabel",parent); pill.Size=UDim2.new(0,0,0,18)
     pill.AutomaticSize=Enum.AutomaticSize.X; pill.Position=UDim2.new(1,-80,0.5,-9)
     pill.BackgroundColor3=on and Color3.fromRGB(20,60,35) or Color3.fromRGB(35,35,45)
@@ -791,7 +795,7 @@ local function makePill(parent,text,on)
     return pill
 end
 
-local function makeButtonRow(card,labelText,order,callback,tooltipText,featureKey,confirmMsg)
+function makeButtonRow(card,labelText,order,callback,tooltipText,featureKey,confirmMsg)
     local row,lbl,div=makeFeatureRow(card,labelText,order)
     if featureKey then
         local starBtn=Instance.new("TextButton",row); starBtn.Size=UDim2.new(0,16,0,16)
@@ -826,7 +830,7 @@ local function makeButtonRow(card,labelText,order,callback,tooltipText,featureKe
     return row
 end
 
-local function makeSideItem(parent,text,icon,order,callback)
+function makeSideItem(parent,text,icon,order,callback)
     local item=Instance.new("TextButton",parent); item.Size=UDim2.new(1,0,0,32)
     item.BackgroundTransparency=1; item.Text=""; item.BorderSizePixel=0; item.LayoutOrder=order
     local accent=Instance.new("Frame",item); accent.Size=UDim2.new(0,3,0.7,0)
@@ -850,14 +854,14 @@ local function makeSideItem(parent,text,icon,order,callback)
     return item,accent,lbl,iconLbl
 end
 
-local function makeRightSection(text,order)
+function makeRightSection(text,order)
     local lbl=Instance.new("TextLabel",RightScroll); lbl.Size=UDim2.new(1,0,0,16)
     lbl.BackgroundTransparency=1; lbl.Text=text:upper(); lbl.TextColor3=C_MUTED
     lbl.TextSize=fs(9); lbl.Font=Enum.Font.GothamBold; lbl.TextXAlignment=Enum.TextXAlignment.Left
     lbl.LayoutOrder=order or 0; return lbl
 end
 
-local function makeRightStatus(labelText,on,order)
+function makeRightStatus(labelText,on,order)
     local card=Instance.new("Frame",RightScroll); card.Size=UDim2.new(1,0,0,30)
     card.BackgroundColor3=C_CARD; card.BorderSizePixel=0; card.LayoutOrder=order or 0
     makeRound(card,6); makeStroke(card,C_STROKE,1)
@@ -871,7 +875,7 @@ local function makeRightStatus(labelText,on,order)
     return card,dot,lbl
 end
 
-local function makeRightDropdown(labelText,options,current,order,callback)
+function makeRightDropdown(labelText,options,current,order,callback)
     local wrap=Instance.new("Frame",RightScroll); wrap.Size=UDim2.new(1,0,0,0)
     wrap.AutomaticSize=Enum.AutomaticSize.Y; wrap.BackgroundTransparency=1
     wrap.BorderSizePixel=0; wrap.LayoutOrder=order or 0; makeList(wrap,Enum.FillDirection.Vertical,4)
@@ -914,7 +918,7 @@ local function makeRightDropdown(labelText,options,current,order,callback)
     return wrap
 end
 
-local function makeRightSlider(labelText,min,max,current,suffix,order,callback)
+function makeRightSlider(labelText,min,max,current,suffix,order,callback)
     local wrap=Instance.new("Frame",RightScroll); wrap.Size=UDim2.new(1,0,0,0)
     wrap.AutomaticSize=Enum.AutomaticSize.Y; wrap.BackgroundTransparency=1
     wrap.BorderSizePixel=0; wrap.LayoutOrder=order or 0; makeList(wrap,Enum.FillDirection.Vertical,6)
@@ -951,7 +955,7 @@ local function makeRightSlider(labelText,min,max,current,suffix,order,callback)
     return wrap
 end
 
-local function makeRightKeybind(labelText,key,order)
+function makeRightKeybind(labelText,key,order)
     local card=Instance.new("Frame",RightScroll); card.Size=UDim2.new(1,0,0,30)
     card.BackgroundColor3=C_CARD; card.BorderSizePixel=0; card.LayoutOrder=order or 0
     makeRound(card,6); makeStroke(card,C_STROKE,1)
@@ -968,11 +972,11 @@ local function makeRightKeybind(labelText,key,order)
     return card,badge
 end
 
-local allSideItems={}
-local allTabFrames={}
-local currentTabName=""
+allSideItems={}
+allTabFrames={}
+currentTabName=""
 
-local function clearContent()
+function clearContent()
     for _,c in ipairs(Content:GetChildren()) do
         if not c:IsA("UIListLayout") and not c:IsA("UIPadding") then c:Destroy() end
     end
@@ -981,7 +985,7 @@ local function clearContent()
     end
 end
 
-local function selectTab(name)
+function selectTab(name)
     if currentTabName==name then return end
     currentTabName=name; clearContent()
     for _,entry in ipairs(allSideItems) do
@@ -999,7 +1003,7 @@ local function selectTab(name)
     if allTabFrames[name] then allTabFrames[name]() end
 end
 
-local function registerSideItem(parent,name,displayText,icon,order)
+function registerSideItem(parent,name,displayText,icon,order)
     local item,accent,lbl,iconLbl=makeSideItem(parent,displayText,icon,order,function()
         selectTab(name)
     end)
@@ -1007,7 +1011,7 @@ local function registerSideItem(parent,name,displayText,icon,order)
     return item
 end
 
-local function sideSection(text,order)
+function sideSection(text,order)
     local f=Instance.new("Frame",SideScroll); f.Size=UDim2.new(1,0,0,24)
     f.BackgroundTransparency=1; f.BorderSizePixel=0; f.LayoutOrder=order
     local l=Instance.new("TextLabel",f); l.Size=UDim2.new(1,-14,1,0)
@@ -1039,7 +1043,6 @@ registerSideItem(SideScroll,"profiles", "Profiles",      "💾",31)
 registerSideItem(SideScroll,"theme",    "Theme",         "🎨",32)
 registerSideItem(SideScroll,"overlay",  "Overlay",       "📊",33)
 registerSideItem(SideScroll,"keybinds", "Keybinds",      "⌨",34)
--- NEW: Notifications tab
 registerSideItem(SideScroll,"notifset", "Notifications", "🔔",35)
 registerSideItem(SideScroll,"notiflog", "Notif History", "📋",36)
 registerSideItem(SideScroll,"credits",  "Credits",       "✨",37)
@@ -1204,13 +1207,14 @@ do
     end)
 end
 
-local function clearBagHighlights()
+function clearBagHighlights()
     for _,sel in ipairs(BagHighlightInstances) do pcall(function() sel:Destroy() end) end
     BagHighlightInstances={}
 end
-local function applyBagHighlight(boxName)
+function applyBagHighlight(boxName)
     clearBagHighlights(); if not BagHighlightEnabled then return end
     pcall(function()
+        if not Machinery then return end
         local box=Machinery:FindFirstChild(boxName); if not box then return end
         local sel=Instance.new("SelectionBox"); sel.Adornee=box; sel.Color3=C_ACCENT
         sel.LineThickness=0.06; sel.SurfaceTransparency=0.8; sel.SurfaceColor3=C_ACCENT; sel.Parent=Workspace
@@ -1218,71 +1222,155 @@ local function applyBagHighlight(boxName)
     end)
 end
 
-local function getZN()
-    for _,gui in ipairs(playerGui:GetChildren()) do
-        local zn=gui:FindFirstChild("ZN",true); if zn then return zn end
-    end; return nil
-end
-local function getButtonValue(btn)
-    if not btn then return nil end; local MC=btn:FindFirstChild("MC"); if not MC then return nil end
-    local MXVal=MC:FindFirstChild("MX"); if not MXVal then return nil end; return MXVal.Value
-end
-local function isButtonDone(btn) local val=getButtonValue(btn); return val==nil or val<=0 end
-local function allButtonsDone(ZN)
-    for i=1,4 do local btn=ZN:FindFirstChild("B"..i); if btn and not isButtonDone(btn) then return false end end; return true
-end
-local function getButtonCenter(mc)
-    return Vector2.new(mc.AbsolutePosition.X+mc.AbsoluteSize.X/2,mc.AbsolutePosition.Y+mc.AbsoluteSize.Y/2)
-end
-local function clashButton(btn)
-    if not btn or isButtonDone(btn) then return end; local MC=btn:FindFirstChild("MC"); if not MC then return end
-    local MXVal=MC:FindFirstChild("MX"); if not MXVal or MXVal.Value<=0 then return end
-    local center=getButtonCenter(MC)
-    pcall(function() VIM:SendMouseMoveEvent(center.X,center.Y,game) end); task.wait()
-    pcall(function() VIM:SendMouseButtonEvent(center.X,center.Y,0,true,game,1) end); task.wait()
-    pcall(function() VIM:SendMouseButtonEvent(center.X,center.Y,0,false,game,1) end); task.wait()
-end
-local function focusButton(btn)
-    if not btn or not ClashSettings.HighlightOnSelect then return end
-    local MC=btn:FindFirstChild("MC"); if MC then pcall(function() GuiService.SelectedObject=MC end) end
-end
-local function exitUINavigation()
-    pcall(function() GuiService.SelectedObject=nil end); task.wait(0.1)
-    for _=1,2 do
-        pcall(function() VIM:SendKeyEvent(true,Enum.KeyCode.BackSlash,false,game) end); task.wait(0.05)
-        pcall(function() VIM:SendKeyEvent(false,Enum.KeyCode.BackSlash,false,game) end); task.wait(0.05)
+function getZN()
+    local pg = Player:FindFirstChildOfClass("PlayerGui") or playerGui
+    if not pg then return nil end
+    for _, gui in ipairs(pg:GetChildren()) do
+        local zn = gui:FindFirstChild("ZN", true)
+        if zn then return zn end
     end
-    pcall(function() GuiService.SelectedObject=nil end)
+    return nil
 end
-local autoClashThread,alreadyExited=nil,false
-local function startAutoClash()
-    if autoClashThread then return end; alreadyExited=false
-    autoClashThread=task.spawn(function()
+
+function getButtonValue(btn)
+    if not btn then return nil end
+    local MC = btn:FindFirstChild("MC")
+    if not MC then return nil end
+    local MXVal = MC:FindFirstChild("MX")
+    if not MXVal then return nil end
+    return MXVal.Value
+end
+
+function isButtonDone(btn)
+    local val = getButtonValue(btn)
+    return (val == nil) or (val <= 0)
+end
+
+function allButtonsDone(ZN)
+    for i = 1, 4 do
+        local btn = ZN:FindFirstChild("B" .. i)
+        if btn and not isButtonDone(btn) then
+            return false
+        end
+    end
+    return true
+end
+
+-- Kept from this UI: selecting the clash button through Roblox UI navigation.
+function focusButton(btn)
+    if not btn or not ClashSettings.HighlightOnSelect then return end
+    local MC = btn:FindFirstChild("MC")
+    if MC then
+        pcall(function() GuiService.SelectedObject = MC end)
+    end
+end
+
+-- Kept from this UI: clears Roblox UI navigation after the clash is complete.
+function exitUINavigation()
+    pcall(function() GuiService.SelectedObject = nil end)
+    task.wait(0.1)
+    for _ = 1, 2 do
+        pcall(function() VIM:SendKeyEvent(true, Enum.KeyCode.BackSlash, false, game) end)
+        task.wait(0.05)
+        pcall(function() VIM:SendKeyEvent(false, Enum.KeyCode.BackSlash, false, game) end)
+        task.wait(0.05)
+    end
+    pcall(function() GuiService.SelectedObject = nil end)
+end
+
+-- Replaced AutoClash engine: uses the remembered Return-key UI navigation method.
+function tapButton(MC)
+    pcall(function() GuiService.SelectedObject = MC end)
+    task.wait()
+    pcall(function() VIM:SendKeyEvent(true, Enum.KeyCode.Return, false, game) end)
+    pcall(function() VIM:SendKeyEvent(false, Enum.KeyCode.Return, false, game) end)
+    task.wait()
+end
+
+function clashButton(btn)
+    if not btn or isButtonDone(btn) then return end
+    local MC = btn:FindFirstChild("MC")
+    local MXVal = MC and MC:FindFirstChild("MX")
+    if not MXVal or MXVal.Value <= 0 then return end
+    focusButton(btn)
+    tapButton(MC)
+end
+
+function drainButton(btn)
+    if not btn then return end
+    local MC = btn:FindFirstChild("MC")
+    local MXVal = MC and MC:FindFirstChild("MX")
+    if not MXVal then return end
+
+    while ClashSettings.AutoClash and MXVal.Value > 0 do
+        focusButton(btn)
+        tapButton(MC)
+        task.wait()
+    end
+end
+
+autoClashThread, alreadyExited = nil, false
+
+function startAutoClash()
+    if autoClashThread then return end
+    alreadyExited = false
+
+    autoClashThread = task.spawn(function()
         while ClashSettings.AutoClash do
-            local ZN=getZN()
+            local ZN = getZN()
             if ZN then
                 if allButtonsDone(ZN) then
-                    if not alreadyExited then alreadyExited=true; task.wait(0.3); exitUINavigation(); Notify("Clash Complete ✅","All green.",3,C_GREEN,"auto") end; task.wait(0.1)
+                    if not alreadyExited then
+                        alreadyExited = true
+                        task.wait(0.3)
+                        exitUINavigation()
+                        Notify("Clash Complete ✅", "All green.", 3, C_GREEN, "auto")
+                    end
+                    task.wait(0.1)
                 else
-                    alreadyExited=false
-                    for i=1,4 do
+                    alreadyExited = false
+                    for i = 1, 4 do
                         if not ClashSettings.AutoClash then break end
-                        local btn=ZN:FindFirstChild("B"..i); if btn and not isButtonDone(btn) then focusButton(btn); clashButton(btn) end
+                        local btn = ZN:FindFirstChild("B" .. i)
+                        if btn and not isButtonDone(btn) then
+                            drainButton(btn)
+                        end
                     end
                 end
-            else task.wait(0.1) end
-        end; autoClashThread=nil
+            else
+                task.wait(0.1)
+            end
+            task.wait(0.1)
+        end
+        autoClashThread = nil
     end)
 end
-local function stopAutoClash() ClashSettings.AutoClash=false; autoClashThread=nil end
-local function toggleAutoClash()
-    ClashSettings.AutoClash=not ClashSettings.AutoClash
-    if ClashSettings.AutoClash then startAutoClash(); Notify("Auto Clash ON","Clicking buttons until green.",2,C_GREEN,"auto")
-    else stopAutoClash(); Notify("Auto Clash OFF","Disabled via keybind.",2,C_RED,"auto") end
-end
-UIS.InputBegan:Connect(function(inp,gp) if gp then return end; if inp.KeyCode==ClashSettings.ClashKeybind then toggleAutoClash() end end)
 
-local function freezeCamera()
+function stopAutoClash()
+    ClashSettings.AutoClash = false
+    alreadyExited = false
+    pcall(function() GuiService.SelectedObject = nil end)
+end
+
+function toggleAutoClash()
+    ClashSettings.AutoClash = not ClashSettings.AutoClash
+    if ClashSettings.AutoClash then
+        startAutoClash()
+        Notify("Auto Clash ON", "Using UI navigation + Return.", 2, C_GREEN, "auto")
+    else
+        stopAutoClash()
+        Notify("Auto Clash OFF", "Disabled via keybind.", 2, C_RED, "auto")
+    end
+end
+
+UIS.InputBegan:Connect(function(inp, gp)
+    if gp then return end
+    if inp.KeyCode == ClashSettings.ClashKeybind then
+        toggleAutoClash()
+    end
+end)
+
+function freezeCamera()
     if CameraSettings.CurrentlyFrozen then return end; CameraSettings.CurrentlyFrozen=true
     CameraSettings.FrozenCFrame=Camera.CFrame; Camera.CameraType=Enum.CameraType.Scriptable
     CameraSettings.RenderConnection=RunService.RenderStepped:Connect(function()
@@ -1291,16 +1379,16 @@ local function freezeCamera()
         end
     end)
 end
-local function unfreezeCamera()
+function unfreezeCamera()
     if not CameraSettings.CurrentlyFrozen then return end; CameraSettings.CurrentlyFrozen=false; CameraSettings.FrozenCFrame=nil
     if CameraSettings.RenderConnection then CameraSettings.RenderConnection:Disconnect(); CameraSettings.RenderConnection=nil end
     Camera.CameraType=Enum.CameraType.Custom
 end
-local function isLockedOn()
+function isLockedOn()
     local s=Camera.CameraSubject; if not s then return false end
     local c=Player.Character; if not c then return false end; return not(s:IsDescendantOf(c) or s==c)
 end
-local function startLockOnWatcher()
+function startLockOnWatcher()
     if CameraSettings.SubjectConnection then return end
     CameraSettings.SubjectConnection=Camera:GetPropertyChangedSignal("CameraSubject"):Connect(function()
         if not CameraSettings.BrokenCamera then return end
@@ -1308,7 +1396,7 @@ local function startLockOnWatcher()
         else unfreezeCamera(); Notify("Lock Off — Restored","Normal camera.",2,C_MUTED,"system") end
     end)
 end
-local function stopLockOnWatcher()
+function stopLockOnWatcher()
     if CameraSettings.SubjectConnection then CameraSettings.SubjectConnection:Disconnect(); CameraSettings.SubjectConnection=nil end
     unfreezeCamera()
 end
@@ -1319,18 +1407,18 @@ UIS.InputBegan:Connect(function(inp,gp)
     end
 end)
 
-local afkEnabled=false; local afkThread=nil
-local function afkLoop()
+afkEnabled=false; local afkThread=nil
+function afkLoop()
     while afkEnabled do
         pcall(function() VirtualUser:CaptureController() end)
         pcall(function() VirtualUser:ClickButton2(Vector2.new()) end)
         task.wait(15)
     end
 end
-local function startAFK() if afkThread then return end; afkThread=task.spawn(afkLoop) end
-local function stopAFK() afkEnabled=false; afkThread=nil end
+function startAFK() if afkThread then return end; afkThread=task.spawn(afkLoop) end
+function stopAFK() afkEnabled=false; afkThread=nil end
 
-local function doRejoin()
+function doRejoin()
     pcall(function()
         local opts=Instance.new("TeleportOptions")
         if AutoRejoin.LoadScript and SCRIPT_URL~="" then opts:SetTeleportData({autoLoad=true,scriptUrl=SCRIPT_URL}) end
@@ -1347,7 +1435,7 @@ task.spawn(function()
         end
     end)
 end)
-local function startAutoRejoin()
+function startAutoRejoin()
     if AutoRejoin.Connection then return end
     AutoRejoin.Connection=Player.OnTeleport:Connect(function(state)
         if state==Enum.TeleportState.Failed and AutoRejoin.Enabled then task.wait(AutoRejoin.Delay); doRejoin() end
@@ -1356,13 +1444,13 @@ local function startAutoRejoin()
         if parent==nil and AutoRejoin.Enabled then task.delay(AutoRejoin.Delay,doRejoin) end
     end)
 end
-local function stopAutoRejoin()
+function stopAutoRejoin()
     AutoRejoin.Enabled=false
     if AutoRejoin.Connection then AutoRejoin.Connection:Disconnect(); AutoRejoin.Connection=nil end
 end
 
-local reconnectFired=false
-local function doReconnect(reason)
+reconnectFired=false
+function doReconnect(reason)
     if not AutoReconnect.Enabled or reconnectFired then return end; reconnectFired=true
     Notify("Auto Reconnect","Detected: "..tostring(reason)..". Rejoining in "..AutoReconnect.Delay.."s...",AutoReconnect.Delay+1,C_ACCENT,"auto")
     task.wait(AutoReconnect.Delay)
@@ -1372,7 +1460,7 @@ local function doReconnect(reason)
         TeleportService:TeleportAsync(game.PlaceId,{Player},opts)
     end)
 end
-local function startAutoReconnect()
+function startAutoReconnect()
     if not AutoReconnect.CoreGuiConnection then
         AutoReconnect.CoreGuiConnection=CoreGui.ChildAdded:Connect(function(child)
             if not AutoReconnect.Enabled then return end
@@ -1403,17 +1491,17 @@ local function startAutoReconnect()
         end; beatConn:Disconnect()
     end)
 end
-local function stopAutoReconnect()
+function stopAutoReconnect()
     AutoReconnect.Enabled=false
     if AutoReconnect.CoreGuiConnection then AutoReconnect.CoreGuiConnection:Disconnect(); AutoReconnect.CoreGuiConnection=nil end
     if AutoReconnect.NetworkConnection then AutoReconnect.NetworkConnection:Disconnect(); AutoReconnect.NetworkConnection=nil end
     if AutoReconnect.KickConnection then AutoReconnect.KickConnection:Disconnect(); AutoReconnect.KickConnection=nil end
 end
 
-local FpsSnapshot={Applied=false,DescConnection=nil,Parts={},Meshes={},Decals={},Effects={},Lighting={},Terrain={}}
-local FogSnapshot={Applied=false,FogEnd=nil,FogStart=nil,FogColor=nil,Brightness=nil,GlobalShadows=nil,PostEffects={}}
+FpsSnapshot={Applied=false,DescConnection=nil,Parts={},Meshes={},Decals={},Effects={},Lighting={},Terrain={}}
+FogSnapshot={Applied=false,FogEnd=nil,FogStart=nil,FogColor=nil,Brightness=nil,GlobalShadows=nil,PostEffects={}}
 
-local function takeSnapshot()
+function takeSnapshot()
     FpsSnapshot.Parts={}; FpsSnapshot.Meshes={}; FpsSnapshot.Decals={}; FpsSnapshot.Effects={}
     for _,v in next,Workspace:GetDescendants() do pcall(function()
         if v:IsA("BasePart") and not v:IsA("MeshPart") then
@@ -1430,7 +1518,7 @@ local function takeSnapshot()
     local T2=Workspace:FindFirstChildOfClass("Terrain")
     if T2 then FpsSnapshot.Terrain={WaterReflectance=T2.WaterReflectance,WaterTransparency=T2.WaterTransparency,WaterWaveSize=T2.WaterWaveSize,WaterWaveSpeed=T2.WaterWaveSpeed} end
 end
-local function stripDescendant(v)
+function stripDescendant(v)
     pcall(function()
         if v:IsA("Model") then v.LevelOfDetail="Disabled"; v.ModelStreamingMode="Nonatomic"
         elseif v:IsA("BasePart") and not v:IsA("MeshPart") then v.CastShadow=false; v.Material="Plastic"; v.Reflectance=0; v.MaterialVariant=""
@@ -1446,7 +1534,7 @@ local function stripDescendant(v)
     end)
 end
 
-local function removeFogAndEffects()
+function removeFogAndEffects()
     if FogSnapshot.Applied then Notify("Already Removed","Hit Restore first.",2,C_MUTED,"info"); return end
     local L=game:GetService("Lighting")
     FogSnapshot.FogEnd=L.FogEnd; FogSnapshot.FogStart=L.FogStart; FogSnapshot.FogColor=L.FogColor
@@ -1462,14 +1550,14 @@ local function removeFogAndEffects()
     FogSnapshot.Applied=true; Notify("Fog & Effects Removed","Press Restore to undo.",4,C_GREEN,"info"); logAction("Fog & Effects removed")
 end
 
-local function restoreFogAndEffects()
+function restoreFogAndEffects()
     if not FogSnapshot.Applied then Notify("Nothing to Restore","Remove first.",2,C_MUTED,"info"); return end
     local L=game:GetService("Lighting")
     pcall(function() L.FogEnd=FogSnapshot.FogEnd; L.FogStart=FogSnapshot.FogStart; L.FogColor=FogSnapshot.FogColor; L.Brightness=FogSnapshot.Brightness; L.GlobalShadows=FogSnapshot.GlobalShadows end)
     FogSnapshot.Applied=false; Notify("Fog & Effects Restored","Lighting values reset.",4,C_GREEN,"info"); logAction("Fog & Effects restored")
 end
 
-local function setNoclip(state)
+function setNoclip(state)
     if state then
         NoclipSettings.Connection=RunService.Stepped:Connect(function()
             local char=Player.Character; if not char then return end
@@ -1484,10 +1572,21 @@ local function setNoclip(state)
     end
 end
 
-local function dexSpace() GymUse:FireServer("Yeaichangedit") end
-local function dexM1()    GymUse:FireServer("CL") end
-local function dexGetNumbers()
-    local surfaceGui=Workspace.Machinery[dexSelectedBox].TV.OO
+function dexSpace()
+    if GymUse then pcall(function() GymUse:FireServer("Yeaichangedit") end) end
+end
+function dexM1()
+    if GymUse then pcall(function() GymUse:FireServer("CL") end) end
+end
+
+function dexGetNumbers()
+    if not Machinery then return 0, nil end
+    local boxModel = Machinery:FindFirstChild(dexSelectedBox)
+    if not boxModel then return 0, nil end
+    local tvModel = boxModel:FindFirstChild("TV")
+    if not tvModel then return 0, nil end
+    local surfaceGui = tvModel:FindFirstChild("OO")
+    if not surfaceGui then return 0, nil end
     local goalNumber,currentNumber,lowestY,highestZ=nil,nil,math.huge,-math.huge
     for _,obj in ipairs(surfaceGui:GetDescendants()) do
         if obj:IsA("TextLabel") and obj.Visible and obj.BackgroundColor3==Color3.fromRGB(255,81,0) and obj.TextTransparency<1 then
@@ -1502,7 +1601,7 @@ local function dexGetNumbers()
     return tonumber(currentNumber) or 0, goalNumber
 end
 
-local function fullRefreshTheme()
+function fullRefreshTheme()
     Root.BackgroundColor3=C_BG
     Topbar.BackgroundColor3=C_SIDEBAR; TFill.BackgroundColor3=C_SIDEBAR; TDiv.BackgroundColor3=C_STROKE
     Sidebar.BackgroundColor3=C_SIDEBAR; Sidebar.BackgroundTransparency=T.SidebarAlpha
@@ -1514,7 +1613,7 @@ local function fullRefreshTheme()
     TooltipFrame.BackgroundColor3=C_PANEL; TooltipLabel.TextColor3=C_TEXT
 end
 
-local function buildTabs()
+function buildTabs()
 
 allTabFrames["favorites"]=function()
     makeSectionLabel(Content,"Starred Features",0)
@@ -1934,13 +2033,6 @@ allTabFrames["combat"]=function()
     modeDiv:Destroy()
     modeRow.Size = UDim2.new(1,0,0,72)
 
-    local modeLabels = {
-        {key="LL", label="2× Left"},
-        {key="RR", label="2× Right"},
-        {key="LR", label="L → R"},
-        {key="RL", label="R → L"},
-    }
-
     local function refreshModeButtons()
         for _,entry in ipairs(modeButtons) do
             local isActive = entry.key == jabComboMode
@@ -2354,11 +2446,7 @@ allTabFrames["keybinds"]=function()
     end,nil,nil,"Reset all keybinds to defaults?")
 end
 
--- =============================================
--- NOTIFICATIONS SETTINGS TAB (new)
--- =============================================
 allTabFrames["notifset"]=function()
-    -- Live status banner at top
     local bannerCard=Instance.new("Frame",Content)
     bannerCard.Size=UDim2.new(1,0,0,48); bannerCard.LayoutOrder=0; bannerCard.BorderSizePixel=0
     bannerCard.BackgroundColor3=NotifSettings.Enabled and Color3.fromRGB(16,50,30) or Color3.fromRGB(45,20,20)
@@ -2384,12 +2472,10 @@ allTabFrames["notifset"]=function()
         bannerLbl.TextColor3=NotifSettings.Enabled and C_GREEN or C_RED
     end
 
-    -- Master Toggle
     makeSectionLabel(Content,"Master Control",1)
     local masterCard=makeCard(Content,2)
     makeToggleRow(masterCard,"Enable All Notifications",0,NotifSettings.Enabled,function(val)
         NotifSettings.Enabled=val; refreshBanner()
-        -- Always bypass the filter for this one system message
         if val then
             local savedState=NotifSettings.Enabled
             NotifSettings.Enabled=true
@@ -2399,7 +2485,6 @@ allTabFrames["notifset"]=function()
         logAction((val and "ON" or "OFF").." — All Notifications")
     end,"Master switch — turns all notification popups on or off")
 
-    -- Duration slider (inline in content area, styled as a card)
     makeSectionLabel(Content,"Default Duration",3)
     local durCard=Instance.new("Frame",Content); durCard.Size=UDim2.new(1,0,0,0)
     durCard.AutomaticSize=Enum.AutomaticSize.Y; durCard.BackgroundColor3=C_CARD
@@ -2438,7 +2523,6 @@ allTabFrames["notifset"]=function()
     UIS.InputEnded:Connect(function(inp) if inp.UserInputType==Enum.UserInputType.MouseButton1 then durDrag=false end end)
     durTrack.InputBegan:Connect(function(inp) if inp.UserInputType==Enum.UserInputType.MouseButton1 then updateDurSlider(inp.Position.X) end end)
 
-    -- Category toggles
     makeSectionLabel(Content,"Categories",5)
     local catCard=makeCard(Content,6)
 
@@ -2493,7 +2577,6 @@ allTabFrames["notifset"]=function()
         end)
     end
 
-    -- Test buttons
     makeSectionLabel(Content,"Test Notifications",7)
     local testCard=makeCard(Content,8)
     local testDefs={
@@ -2505,8 +2588,6 @@ allTabFrames["notifset"]=function()
     for i,td in ipairs(testDefs) do
         local tdLabel,tdCat,tdColor,tdMsg=td[1],td[2],td[3],td[4]
         makeButtonRow(testCard,tdLabel,i,function()
-            -- Force-send even if master is off, so the user can preview what the notif looks like
-            -- We temporarily bypass the filter for the test
             local savedEnabled=NotifSettings.Enabled
             local savedCat=NotifSettings["Category"..tdCat:sub(1,1):upper()..tdCat:sub(2)]
             NotifSettings.Enabled=true
@@ -2523,7 +2604,6 @@ allTabFrames["notifset"]=function()
         end,"Send a test notification for this category")
     end
 
-    -- Right panel
     makeRightSection("Quick Presets",0)
     local presetCard=makeCard(RightScroll,1)
     makeButtonRow(presetCard,"Enable All",0,function()
@@ -2536,7 +2616,6 @@ allTabFrames["notifset"]=function()
     makeButtonRow(presetCard,"Disable All",1,function()
         NotifSettings.CategorySystem=false; NotifSettings.CategoryAuto=false
         NotifSettings.CategoryCombat=false; NotifSettings.CategoryInfo=false
-        -- Keep master on so user can still re-enable cats
         Notify("Categories OFF","Master still on; individual cats silenced.",3,C_YELLOW,"system")
         local tn=currentTabName; currentTabName=""; selectTab(tn)
     end)
